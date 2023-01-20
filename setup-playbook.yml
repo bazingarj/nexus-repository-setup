@@ -1,0 +1,70 @@
+---
+- name: Setup Nexus Repository
+  hosts: localhost
+  remote_user: ubuntu
+  vars:
+    service_description: "This service is used for Nexus Repository "
+    nexus_folder: "nexus-3.45.0-01"
+    user: "ubuntu"
+
+  tasks:
+  - name: APT update
+    become: true
+    apt:
+      update_cache: yes
+
+  - name: Install OpenJDK 8 & nginx
+    become: true
+    apt:
+      name: "{{ item }}"
+      state: present
+    with_items:
+     - openjdk-8-jdk
+     - nginx
+
+  - name: Copy nginx vhost
+    become: true
+    ansible.builtin.copy:
+      src: ./nexus-repository.conf
+      dest: /etc/nginx/sites-available/default
+      mode: '0644'
+
+  - name: start and enable nginx service
+    become: true
+    systemd: state=started name=nginx enabled=true
+
+  - name: Download and Unarchive tar.gz build from Nexus
+    become: true
+    ansible.builtin.unarchive:
+      src: "https://download.sonatype.com/nexus/3/{{ nexus_folder }}-unix.tar.gz"
+      dest: /opt/
+      remote_src: yes
+
+  - name: change permission of nexus folder
+    become: true
+    file: path="/opt/{{ nexus_folder }}" owner=ubuntu group=ubuntu mode=0775 state=directory recurse=yes
+
+  - name: change permission of sonatype-work folder
+    become: true
+    file: path=/opt/sonatype-work owner=ubuntu group=ubuntu mode=0775 state=directory recurse=yes
+
+
+  - name: install nexus-repository systemd unit file
+    become: true
+    template: src=./nexus-repository.template dest=/etc/systemd/system/nexus-repository.service
+
+  - name: start nexus-repository service
+    become: true
+    systemd: state=started name=nexus-repository daemon_reload=yes enabled=true
+
+  - name: restart nginx
+    become: true
+    service: name=nginx state=restarted
+
+#  - name: Getting Default Password
+#    shell: cat /opt/sonatype-work/nexus3/admin.password
+#    register: password
+
+#  - name: Printing Default Credentials
+#    debug:
+#      msg: "Domain: {{ http://ansible_ssh_host }} \n User: admin \n Password Location: /opt/sonatype-work/nexus3/admin.password"
